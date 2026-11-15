@@ -10,6 +10,7 @@ runner = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(runner)
 
 from policy_checks import applicable_rules, three_month_window, expired
+from result_validation import validate_outcomes
 
 class PolicyTests(unittest.TestCase):
     def test_month_end_and_expiry_boundaries(self):
@@ -22,24 +23,39 @@ class PolicyTests(unittest.TestCase):
         policy = {'rules': [{'id':'D1','applies_to':'person'}, {'id':'D3','applies_to':'company'}, {'id':'D5','applies_to':'both'}]}
         self.assertEqual([r['id'] for r in applicable_rules(policy, 'company')], ['D3', 'D5'])
 
+class OutcomeTests(unittest.TestCase):
+    policy = {'rules':[{'id':'D1','applies_to':'person'}, {'id':'D3','applies_to':'company'}, {'id':'D5','applies_to':'both'}]}
+    def test_d3_satisfied_does_not_become_gap(self):
+        rows = [{'rule_id':'D3','outcome':'satisfied','explanation':'Evidence supplied'}, {'rule_id':'D5','outcome':'gap','explanation':'Explanation missing'}]
+        outcomes, gaps = validate_outcomes(rows, self.policy, 'company')
+        self.assertEqual([r['rule_id'] for r in gaps], ['D5'])
+        self.assertEqual(outcomes[0]['outcome'], 'not_applicable')
+    def test_company_rejects_person_rule(self):
+        with self.assertRaisesRegex(ValueError, 'Inapplicable'):
+            validate_outcomes([{'rule_id':'D1','outcome':'gap','explanation':'x'}], self.policy, 'company')
+    def test_duplicate_and_missing_rejected(self):
+        row = {'rule_id':'D3','outcome':'satisfied','explanation':'x'}
+        with self.assertRaisesRegex(ValueError, 'Duplicate'): validate_outcomes([row,row], self.policy, 'company')
+        with self.assertRaisesRegex(ValueError, 'Missing'): validate_outcomes([row], self.policy, 'company')
+
 class InventoryTests(unittest.TestCase):
-    def test_inventory_hash_and_unsupported(self):
+    def test_inventory_hash_and_unreadable(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root/'read.txt').write_text('evidence')
-            (root/'unknown.bin').write_bytes(b'\x00')
-            docs, texts = runner.inventory(root)
-            self.assertEqual([x['status'] for x in docs], ['readable', 'unsupported'])
+            (root/'scan.png').write_bytes(b'evidence')
+            with patch.object(runner, 'command', return_value=type('Result', (), {'returncode': 1, 'stdout': ''})()):
+                docs, texts = runner.inventory(root)
+            self.assertEqual(docs[0]['status'], 'unreadable')
             self.assertEqual(docs[0]['sha256'], 'ee8250fb76e094b34b471f13a73dbbe51d1ae142e9df59d7c0d31ec20f0a0a8e')
-            self.assertEqual(texts[0]['pages'][0]['page'], None)
     def test_authoring_metadata_excluded_from_evidence(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root/'profile.json').write_text('{\"answer\": \"secret\"}')
             (root/'manifest.json').write_text('{\"expected\": true}')
-            (root/'evidence.txt').write_text('evidence')
-            docs, texts = runner.inventory(root)
-            self.assertEqual([d['filename'] for d in docs], ['evidence.txt'])
+            (root/'evidence.png').write_bytes(b'evidence')
+            with patch.object(runner, 'command', return_value=type('Result', (), {'returncode': 0, 'stdout': 'image'})()):
+                docs, texts = runner.inventory(root)
+            self.assertEqual([d['filename'] for d in docs], ['evidence.png'])
             self.assertNotIn('secret', str(texts))
 
     def test_image_ocr_is_flagged_for_review(self):
