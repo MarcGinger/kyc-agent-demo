@@ -26,10 +26,15 @@ class PolicyTests(unittest.TestCase):
 class OutcomeTests(unittest.TestCase):
     policy = {'rules':[{'id':'D1','applies_to':'person'}, {'id':'D3','applies_to':'company'}, {'id':'D5','applies_to':'both'}]}
     def test_d3_satisfied_does_not_become_gap(self):
-        rows = [{'rule_id':'D3','outcome':'satisfied','explanation':'Evidence supplied'}, {'rule_id':'D5','outcome':'gap','explanation':'Explanation missing'}]
+        rows = [{'rule_id':'D3','outcome':'satisfied','explanation':'Evidence supplied; no gap.'}, {'rule_id':'D5','outcome':'gap','explanation':'Explanation missing'}]
         outcomes, gaps = validate_outcomes(rows, self.policy, 'company')
         self.assertEqual([r['rule_id'] for r in gaps], ['D5'])
         self.assertEqual(outcomes[0]['outcome'], 'not_applicable')
+    def test_gap_is_driven_by_status_not_prose(self):
+        rows = [{'rule_id':'D3','outcome':'gap','explanation':'No gap.'}, {'rule_id':'D5','outcome':'satisfied','explanation':'Evidence supplied.'}]
+        _, gaps = validate_outcomes(rows, self.policy, 'company')
+        self.assertEqual([row['rule_id'] for row in gaps], ['D3'])
+
     def test_company_rejects_person_rule(self):
         with self.assertRaisesRegex(ValueError, 'Inapplicable'):
             validate_outcomes([{'rule_id':'D1','outcome':'gap','explanation':'x'}], self.policy, 'company')
