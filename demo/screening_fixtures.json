@@ -1,0 +1,8 @@
+{
+  "fixture_version": "1.0",
+  "subjects": {
+    "fixture-match": {"sanctions": "SIMULATED_POTENTIAL_MATCH", "pep": "SIMULATED_NO_MATCH", "adverse_media": "SIMULATED_NO_MATCH"},
+    "fixture-no-match": {"sanctions": "SIMULATED_NO_MATCH", "pep": "SIMULATED_NO_MATCH", "adverse_media": "SIMULATED_NO_MATCH"},
+    "fixture-incomplete": {"sanctions": "SIMULATED_NO_MATCH", "pep": "INCOMPLETE", "adverse_media": "NOT_PERFORMED"}
+  }
+}
