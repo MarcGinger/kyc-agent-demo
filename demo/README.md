@@ -4,7 +4,7 @@ This is a local evaluation of the existing Anthropic KYC plugin, not a productio
 
 ## Setup and run
 
-Requires Python 3, Poppler (`pdfinfo`, `pdftotext`), Git, and authenticated Claude Code (`claude auth status`). Claude Code uses the configured Anthropic account; no OpenAI model is used. Check the pack path and run from the repository root:
+Requires Python 3, Poppler (`pdfinfo`, `pdftotext`, `pdftoppm`), Tesseract OCR, Git, and authenticated Claude Code (`claude auth status`). Claude Code uses the configured Anthropic account; no OpenAI model is used. Check the pack path and run from the repository root:
 
 ```sh
 python3 demo/run.py --pack /absolute/path/to/person-pack --type person --date 2026-11-15 --output demo/runs/person-1 --model sonnet
@@ -13,7 +13,7 @@ python3 -m unittest discover -s demo -p 'test_*.py'
 python3 scripts/check.py
 ```
 
-The output directory must not exist and cannot overlap the pack. In-repository outputs are restricted to `demo/runs/`, which is ignored; `packs/` and `demo/local/` are also ignored. Store other input and result paths outside Git. Never put credentials in the repository. Original files are read only. All regular files in a pack, including profiles and manifests, are inventory items and are supplied as evidence if supported. Symlinks are rejected. PDF extraction is text only; scanned or partially empty pages are flagged for human review, not OCR'd. Unsupported or unreadable files remain in the inventory. No external links or embedded content are followed. Text extraction and model output can be incomplete; inspect sources.
+The output directory must not exist and cannot overlap the pack. In-repository outputs are restricted to `demo/runs/`, which is ignored; `packs/` and `demo/local/` are also ignored. Store other input and result paths outside Git. Never put credentials in the repository. Original files are read only. All regular files in a pack, including profiles and manifests, are inventory items and are supplied as evidence if supported. Symlinks are rejected. PDF pages with no embedded text and supported image files are processed with local Tesseract OCR and marked `ocr_needs_review`; OCR is error-prone and must be checked against the originals. Empty or failed extraction is flagged. Unsupported or unreadable files remain in the inventory. No external links or embedded content are followed. Text extraction and model output can be incomplete; inspect sources.
 
 Each run writes `metadata.json`, raw `runtime.json` and `stderr.txt`; on successful structural checks it also writes `results.json` and `report.md`. The raw response and outputs can contain personal information. Metadata records commit, dirty status, input hashes, policy, runtime, requested and actual model usage where returned, timing and cost when available. Commit plus a dirty flag is not a reproducible source snapshot; commit changes before a definitive run. `COMPLETED` means the call and basic result-shape checks passed, not that the extraction or rule assessment is accurate. `NOT ASSESSED` remains until a person checks results against independent expectations. Output validation checks basic shape and references only; it cannot establish factual accuracy or rule completeness.
 
@@ -33,4 +33,4 @@ The adapted local runner loads the same plugin agent and skills, supplies the de
 * The extraction skill and managed schema represent owners as flat lists, while the rules skill refers to chain depth; the available representation does not reliably establish ownership-chain depth. The demo does not score depth.
 * `screening-mock-provider` is accessible. Its HTTP simulator creates stateful screening jobs and defaults unmapped subjects to clear. It is not a read-only connector, and that default must not be treated as actual screening. A controlled read-only fixture adapter is a later milestone, after both document workflows work; it is not implemented here.
 
-The initial repository check reports three missing bundled skill sources for meeting-prep-agent (`client-report`, `client-review`, `investment-proposal`), unrelated to this demo. Company execution, independent expected results and accuracy assessment remain outstanding.
+The initial repository check reports three missing bundled skill sources for meeting-prep-agent (`client-report`, `client-review`, `investment-proposal`), unrelated to this demo. Independent expected results and accuracy assessment remain outstanding.
