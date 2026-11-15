@@ -1,4 +1,5 @@
 import importlib.util
+import datetime
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -7,6 +8,19 @@ from pathlib import Path
 spec = importlib.util.spec_from_file_location('runner', Path(__file__).with_name('run.py'))
 runner = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(runner)
+
+from policy_checks import applicable_rules, three_month_window, expired
+
+class PolicyTests(unittest.TestCase):
+    def test_month_end_and_expiry_boundaries(self):
+        day = datetime.date(2024, 5, 31)
+        self.assertEqual(three_month_window(day), (datetime.date(2024, 2, 29), day))
+        self.assertFalse(expired(day, day))
+        self.assertTrue(expired(datetime.date(2024, 5, 30), day))
+        self.assertIsNone(expired(None, day))
+    def test_applicability(self):
+        policy = {'rules': [{'id':'D1','applies_to':'person'}, {'id':'D3','applies_to':'company'}, {'id':'D5','applies_to':'both'}]}
+        self.assertEqual([r['id'] for r in applicable_rules(policy, 'company')], ['D3', 'D5'])
 
 class InventoryTests(unittest.TestCase):
     def test_inventory_hash_and_unsupported(self):
@@ -18,6 +32,16 @@ class InventoryTests(unittest.TestCase):
             self.assertEqual([x['status'] for x in docs], ['readable', 'unsupported'])
             self.assertEqual(docs[0]['sha256'], 'ee8250fb76e094b34b471f13a73dbbe51d1ae142e9df59d7c0d31ec20f0a0a8e')
             self.assertEqual(texts[0]['pages'][0]['page'], None)
+    def test_authoring_metadata_excluded_from_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root/'profile.json').write_text('{\"answer\": \"secret\"}')
+            (root/'manifest.json').write_text('{\"expected\": true}')
+            (root/'evidence.txt').write_text('evidence')
+            docs, texts = runner.inventory(root)
+            self.assertEqual([d['filename'] for d in docs], ['evidence.txt'])
+            self.assertNotIn('secret', str(texts))
+
     def test_image_ocr_is_flagged_for_review(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
