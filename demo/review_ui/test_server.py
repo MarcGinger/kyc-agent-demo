@@ -13,6 +13,21 @@ from urllib.request import urlopen
 spec=importlib.util.spec_from_file_location('review_server',Path(__file__).with_name('server.py'))
 mod=importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
 
+class HighlightTests(unittest.TestCase):
+    def test_unique_value_and_reference_annotation(self):
+        xml = b'<html xmlns="urn:test"><page width="100" height="200"><word xMin="10" yMin="20" xMax="40" yMax="30">DEMO-COMPANY-001</word></page></html>'
+        boxes = mod.text_highlights(xml, 'DEMO-COMPANY-001 (synthetic reference)')
+        self.assertEqual(len(boxes), 1)
+        self.assertAlmostEqual(boxes[0]['x'], .1)
+        self.assertAlmostEqual(boxes[0]['y'], .1)
+        self.assertEqual(mod.text_highlights(xml, 'DEMO-COMPANY-002'), [])
+    def test_repeated_and_partial_match_not_highlighted(self):
+        xml = b'<html><page width="100" height="100"><word xMin="1" yMin="1" xMax="10" yMax="10">Alpha</word><word xMin="1" yMin="20" xMax="10" yMax="30">Alpha</word></page></html>'
+        self.assertEqual(mod.text_highlights(xml, 'Alpha'), [])
+        self.assertEqual(mod.text_highlights(xml, 'Alpha Beta'), [])
+    def test_no_inference_for_image(self):
+        self.assertEqual(mod.highlight_pdf(Path('example.png'), 1, 'Alpha'), [])
+
 class ReviewTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory(); self.root=Path(self.tmp.name); self.now=1000.0
@@ -82,6 +97,9 @@ class ReviewTests(unittest.TestCase):
         try:
             base=f'http://127.0.0.1:{server.server_port}'
             with urlopen(base+'/api/catalog') as response: self.assertEqual(len(json.load(response)),4)
+            with urlopen(base+'/api/highlight?pack=person&run=person-1&item=fact-0&file=documents%2Fsource.png&page=1') as response: self.assertEqual(json.load(response)['boxes'], [])
+            with self.assertRaises(HTTPError) as bad_item: urlopen(base+'/api/highlight?pack=person&run=person-1&item=rule-0&file=documents%2Fsource.png&page=1')
+            bad_item.exception.close()
             with self.assertRaises(HTTPError) as bad_path: urlopen(base+'/api/document?pack=person&run=person-1&file=../../etc/passwd&page=1')
             bad_path.exception.close()
             with self.assertRaises(HTTPError) as bad_pack: urlopen(base+'/api/run?pack=company&run=person-1')

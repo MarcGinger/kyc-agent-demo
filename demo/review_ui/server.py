@@ -11,6 +11,7 @@ import subprocess
 import tempfile
 import threading
 import time
+import xml.etree.ElementTree as ET
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
@@ -32,6 +33,42 @@ def pages(path):
     result = subprocess.run(['pdfinfo', str(path)], capture_output=True, text=True, timeout=15)
     if result.returncode: raise ValueError('Unreadable PDF')
     return next((int(line.split(':', 1)[1].strip()) for line in result.stdout.splitlines() if line.startswith('Pages:')), 0)
+
+def text_highlights(bbox_xml, value):
+    """Find literal word sequences in a PDF text layer; not evidence validation."""
+    if not isinstance(value, str):
+        return []
+    # Only remove the explicit synthetic-reference annotation; other wording is matched in full.
+    query = re.sub(r'\s+\(synthetic reference\)\s*$', '', value, flags=re.IGNORECASE).strip()
+    tokenize = lambda text: re.findall(r'[^\W_]+', text.casefold(), re.UNICODE)
+    wanted = tokenize(query)
+    if not wanted or len(wanted) > 80:
+        return []
+    root = ET.fromstring(bbox_xml)
+    page = next((node for node in root.iter() if node.tag.rsplit('}', 1)[-1] == 'page'), None)
+    if page is None: return []
+    width, height = float(page.get('width')), float(page.get('height'))
+    if width <= 0 or height <= 0: return []
+    tokens, boxes = [], []
+    for word in page.iter():
+        if word.tag.rsplit('}', 1)[-1] != 'word': continue
+        rect = {'x':float(word.get('xMin'))/width, 'y':float(word.get('yMin'))/height,
+                'width':(float(word.get('xMax'))-float(word.get('xMin')))/width,
+                'height':(float(word.get('yMax'))-float(word.get('yMin')))/height}
+        for token in tokenize(''.join(word.itertext())):
+            tokens.append(token); boxes.append(rect)
+    # Highlight only unique complete matches; repeated text is ambiguous.
+    matches = [i for i in range(len(tokens)-len(wanted)+1) if tokens[i:i+len(wanted)] == wanted]
+    if len(matches) != 1: return []
+    selected = boxes[matches[0]:matches[0]+len(wanted)]
+    return [box for i, box in enumerate(selected) if i == 0 or box != selected[i-1]]
+
+def highlight_pdf(path, page, value):
+    if path.suffix.lower() != '.pdf': return []
+    result = subprocess.run(['pdftotext','-f',str(page),'-l',str(page),'-bbox',str(path),'-'], capture_output=True, timeout=20)
+    if result.returncode: return []
+    try: return text_highlights(result.stdout, value)
+    except (ET.ParseError, ValueError, TypeError): return []
 
 class Store:
     def __init__(self, packs, runs, reviews, clock=time.time):
@@ -191,6 +228,13 @@ class Handler(BaseHTTPRequestHandler):
                     if state['timer'].get('owner') and store.clock()-state['timer']['last'] > LEASE:
                         store.stop_timer(state,store.clock(),accrue=False); store.write(path,state)
                     return self.send(200,{'bundle':bundle,'review':state})
+            if url.path=='/api/highlight':
+                name=q.get('file',[''])[0]; page=int(q.get('page',['1'])[0]); item_id=q.get('item',[''])[0]
+                item=next((i for i in bundle['items'] if i['id']==item_id and i['kind']=='fact'),None)
+                if not item or not any(c.get('valid') and c.get('filename')==name and (c.get('page') is None or c.get('page')==page) for c in item['citations']): raise ValueError('Citation does not match finding')
+                path_source=safe_file(store.packs[pack],name)
+                boxes=highlight_pdf(path_source,page,item['original'].get('value'))
+                return self.send(200,{'boxes':boxes,'message':'Text match; check the original.' if boxes else 'No unique text match available; review the original.'})
             if url.path=='/api/docinfo':
                 name=q.get('file',[''])[0]
                 return self.send(200,store.citations(pack,{x['filename']:x for x in bundle['inventory']},[{'filename':name,'page':None}])[0])
