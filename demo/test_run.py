@@ -52,6 +52,8 @@ class InventoryTests(unittest.TestCase):
             root = Path(tmp)
             (root/'profile.json').write_text('{\"answer\": \"secret\"}')
             (root/'manifest.json').write_text('{\"expected\": true}')
+            (root/'expected-answers.pdf').write_bytes(b'secret')
+            (root/'report.pdf').write_bytes(b'secret')
             (root/'evidence.png').write_bytes(b'evidence')
             with patch.object(runner, 'command', return_value=type('Result', (), {'returncode': 0, 'stdout': 'image'})()):
                 docs, texts = runner.inventory(root)

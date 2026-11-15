@@ -20,6 +20,12 @@ PLUGIN = ROOT / 'plugins/agent-plugins/kyc-screener'
 def command(args, **kw):
     return subprocess.run(args, text=True, capture_output=True, **kw)
 
+def is_source_document(path, root):
+    parts = [part.lower() for part in path.relative_to(root).parts]
+    reserved = ('profile', 'manifest', 'expected', 'expectation', 'comparison', 'report', 'results', 'review')
+    return (path.suffix.lower() in ('.pdf', '.png', '.jpg', '.jpeg', '.tif', '.tiff')
+            and not any(part.startswith(reserved) for part in parts))
+
 def inventory(pack):
     docs, texts = [], []
     def ocr(path):
@@ -31,7 +37,7 @@ def inventory(pack):
         if not path.is_file():
             continue
         rel = path.relative_to(pack).as_posix()
-        if path.suffix.lower() not in ('.pdf', '.png', '.jpg', '.jpeg', '.tif', '.tiff'):
+        if not is_source_document(path, pack):
             continue
         raw = path.read_bytes()
         item = {'filename': rel, 'sha256': hashlib.sha256(raw).hexdigest(), 'status': 'unsupported'}
@@ -95,7 +101,7 @@ def main():
     out.mkdir(parents=True, exist_ok=False)
     start = time.monotonic()
     docs, texts = inventory(source_dir)
-    excluded = [p.relative_to(pack).as_posix() for p in sorted(source_dir.rglob('*')) if p.is_file() and p.suffix.lower() not in ('.pdf', '.png', '.jpg', '.jpeg', '.tif', '.tiff')]
+    excluded = [p.relative_to(pack).as_posix() for p in sorted(source_dir.rglob('*')) if p.is_file() and not is_source_document(p, source_dir)]
     for entry in docs + texts:
         entry['filename'] = 'documents/' + entry['filename']
     policy = json.loads(POLICY.read_text())
