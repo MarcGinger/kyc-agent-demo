@@ -45,3 +45,8 @@ coverage/
 TASKS.md
 MEMORY.md
 .claude/worktrees/
+
+# Local KYC evidence and evaluation artifacts
+/packs/
+/demo/runs/
+/demo/local/
